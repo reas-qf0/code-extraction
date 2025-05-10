@@ -17,7 +17,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
     shutil.copy(fname, os.path.join(tmpdir, os.path.basename(fname)))
     print('Running CCStokener...')
     os.chdir('../CCStokener/ccstokener')
-    os.system('%s runner.py -i "%s" -m common -t %s -l java' % (venv_python, tmpdir, t))
+    if os.system('%s runner.py -i "%s" -m common -t %s -l java >/dev/null' % (venv_python, tmpdir, t)):
+        print('CCStokener exited with error, exiting.')
+        exit(1)
 
 
 with open('./results/clonepairs.txt') as file:
