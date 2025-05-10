@@ -19,18 +19,22 @@ def type_to_string(type):
     if type is None: return "void"
     return type.name + "[]" * len(type.dimensions)
 
-def simultaneous_walk(node1, node2, path1=tuple(), path2=tuple()):
+def simultaneous_walk(nodes, paths=None):
+    n = len(nodes)
+    if paths is None:
+        paths = [() for _ in range(n)]
     #print('sim_walk', node1, node2)
-    if type(node1) != type(node2):
-        yield path1, path2, node1, node2
-        return
-    if is_list(node1):
-        for x1, x2 in zip(node1, node2):
-            for x in simultaneous_walk(x1, x2, path1, path2):
-                yield x
-    if is_node(node1):
-        yield path1, path2, node1, node2
-        for attr, value1, value2 in zip(node1.attrs, node1.children, node2.children):
-            if value1 is not None and value2 is not None:
-                for x in simultaneous_walk(value1, value2, path1 + (node1,), path2 + (node2,)):
-                    yield x
+    for i in range(1, n):
+        if type(nodes[i]) != type(nodes[0]):
+            yield paths, nodes
+            return
+    if is_list(nodes[0]):
+        for xs in zip(*nodes):
+            yield from simultaneous_walk(xs, paths)
+    if is_node(nodes[0]):
+        yield paths, nodes
+        new_paths = tuple([p + (x,) for p,x in zip(paths, nodes)])
+        for attr in nodes[0].attrs:
+            values = list(map(lambda x: x.__dict__[attr], nodes))
+            if None not in values:
+                yield from simultaneous_walk(values, new_paths)
