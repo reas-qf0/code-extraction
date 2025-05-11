@@ -215,7 +215,7 @@ class Extractor:
         for pos1, pos2, x in replacements:
             self.lines[pos1[0]-1:pos2[0]] = self.lines[pos1[0]-1][:pos1[1]-1] + x + self.lines[pos2[0]-1][pos2[1]:]
 
-        with open('output.java','w') as file:
+        with open(dst,'w') as file:
             file.write(''.join(self.lines))
 
 

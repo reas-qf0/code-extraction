@@ -11,7 +11,8 @@ else:
 fname = os.path.abspath(fname)
 print('Processing file:', fname)
 
-os.chdir(os.path.abspath(os.path.dirname(__file__)))
+extractor_path = os.path.abspath(os.path.dirname(__file__))
+os.chdir(extractor_path)
 venv_python = os.path.abspath('.venv/bin/python3')
 with tempfile.TemporaryDirectory() as tmpdir:
     shutil.copy(fname, os.path.join(tmpdir, os.path.basename(fname)))
@@ -47,5 +48,7 @@ for i, group in enumerate(groups):
     except Exception as e:
         print('failure')
         print('\tmessage:', e)
-print('--- Saving result to: output.java ---')
-extractor.output_to_file('output.java')
+
+output_file = os.path.join(extractor_path, 'output.java')
+print('--- Saving result to: %s ---' % output_file)
+extractor.output_to_file(output_file)
