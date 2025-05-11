@@ -26,7 +26,7 @@ class VariableManager:
                     b = False
                     break
             if not b: continue
-            return x_type
+            return x_id
         return None
     def get_type(self, name, scope):
         t = self.get_inscope_type(name, scope)

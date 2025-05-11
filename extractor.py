@@ -63,7 +63,7 @@ class Extractor:
             # outscopes have to always be passed since they otherwise won't be visible
             # fields have to be passed only if different fields are used
             if VarClass.INSCOPE in cs:
-                if filter(lambda x: x != VarClass.INSCOPE, cs):
+                if any(map(lambda x: x != VarClass.INSCOPE, cs)):
                     raise ValueError("inscope matching with non-inscope")
                 if len(set(ts)) > 1: raise ValueError("different inscope variables in the same place")
             elif VarClass.OUTSCOPE in cs or (all(filter(lambda x: x == VarClass.FIELD, cs)) and len(set(names)) > 1):
