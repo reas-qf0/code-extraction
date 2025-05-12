@@ -44,7 +44,7 @@ class SourceFile:
     def __init__(self, path):
         self.path = path
         with open(path) as file:
-            self.tokens = javalang.tokenizer.tokenize(file.read())
+            self.tokens = list(javalang.tokenizer.tokenize(file.read()))
         self.tree = javalang.parser.parse(self.tokens)
         self.walk = list(filter(lambda x: is_node(x[1]), walk_tree(self.tree)))
     def narrow_down(self, line_start, line_end):
@@ -55,6 +55,18 @@ class SourceFile:
             if n is node:
                 return path
         return None
+
+    def find_token(self, pos):
+        return next(filter(lambda i: self.tokens[i].position >= pos, range(len(self.tokens))))
+    def find_matching_paren(self, i):
+        parens = {'(': ')', '[': ']', '{': '}'}
+        paren = self.tokens[i].value
+        count = 1
+        while True:
+            i += 1
+            if self.tokens[i].value == paren: count += 1
+            if self.tokens[i].value == parens[paren]: count -= 1
+            if count == 0: return i
 
     def get_field_declarations(self, node):
         path = self.get_path(node)

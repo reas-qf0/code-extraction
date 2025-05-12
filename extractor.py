@@ -1,6 +1,6 @@
 from javalang.tree import *
 from collections import namedtuple
-from node_operations import simultaneous_walk, type_to_string, literal_to_type
+from node_operations import simultaneous_walk, type_to_string, literal_to_type, separate_references
 from source_file import SourceFile
 from variable_manager import VariableManager, VarClass
 from sys import argv
@@ -17,6 +17,7 @@ class Extractor:
             self.lines = file.readlines()
         self.file = SourceFile(src)
         self.replacements = []
+        self.replacements2 = []
         self.line_replacements = []
         self.methods = []
         self.counter = 1
@@ -24,13 +25,22 @@ class Extractor:
     def print(self, *args, **kwargs):
         if not self.silent:
             print(*args, **kwargs)
+    def get_segment(self, pos1, pos2):
+        line1, i1, line2, i2 = pos1[0] - 1, pos1[1] - 1, pos2[0] - 1, pos2[1]
+        if line1 == line2:
+            return self.lines[line1][i1:i2]
+        return self.lines[line1][i1:] + ''.join(self.lines[line1+1:line2]) + self.lines[line2][:i2]
     def replace(self, position, len, new_s):
-        self.replacements.append(Replacement(position, len, new_s))
+        self.replacements2.append(Replacement(position, len, new_s))
+    def apply_replacements(self):
+        self.replacements.extend(self.replacements2)
+        self.replacements2 = []
     def replace_lines(self, start, end, new_lines):
         self.line_replacements.append(LineReplacement(tuple(start), tuple(end), new_lines))
 
 
     def extract(self, *lines):
+        self.replacements2 = []
         if type(lines) == list:
             lines = lines[0]
         if len(lines) < 2:
@@ -53,28 +63,6 @@ class Extractor:
         const_params = {}
         var_params = {}
         ret_params = {}
-
-        def process_vars(nodes, paths):
-            nonlocal counter
-            names = tuple(map(lambda x: x.qualifier.split('.')[0] if x.qualifier else x.member, nodes))
-            res = [vars[i].get_type(names[i], paths[i]) for i in range(n)]
-            cs, ts = map(list, zip(*res))
-            # inscopes don't have to be passed in but they have to match in the ast position and also only come with inscopes
-            # outscopes have to always be passed since they otherwise won't be visible
-            # fields have to be passed only if different fields are used
-            if VarClass.INSCOPE in cs:
-                if any(map(lambda x: x != VarClass.INSCOPE, cs)):
-                    raise ValueError("inscope matching with non-inscope")
-                if len(set(ts)) > 1: raise ValueError("different inscope variables in the same place")
-            elif VarClass.OUTSCOPE in cs or (all(filter(lambda x: x == VarClass.FIELD, cs)) and len(set(names)) > 1):
-                if len(set(map(lambda x: x.name, ts))) > 1 or len(set(map(lambda x: tuple(x.dimensions), ts))) > 1:
-                    raise ValueError("variables of different types in the same place")
-                if names not in var_params:
-                    params.append(Parameter("extracted%s" % counter, type_to_string(ts[0]), names))
-                    counter += 1
-                    var_params[names] = params[-1]
-                p = var_params[names]
-                self.replace(nodes[0].position, len(names[0]), p.name)
 
         for paths, nodes in simultaneous_walk(blocks):
             for i in range(1, n):
@@ -112,15 +100,68 @@ class Extractor:
 
             # reference to a variable
             if isinstance(nodes[0], (MemberReference, MethodInvocation)):
-                if isinstance(paths[0][-1], (MemberReference, MethodInvocation)) and paths[0][-1].qualifier is nodes[0]: continue
-                if isinstance(paths[0][-1], Assignment) and paths[0][-1].expressionl is nodes[0]: continue
-                process_vars(nodes, paths)
+                refs = [separate_references(x) for x in nodes]
+
+                # find "common" suffix
+                suff_i = 0
+                while suff_i < min(map(len, refs)):
+                    curs = [x[len(x) - suff_i - 1] for x in refs]
+                    sat = False
+                    if all(map(lambda x: isinstance(x, str), curs)):
+                        if len(set(curs)) == 1:
+                            sat = True
+                    if all(map(lambda x: isinstance(x, MethodInvocation), curs)):
+                        if len(set([x.member for x in curs])) == 1:
+                            sat = True
+                    if all(map(lambda x: isinstance(x, ArraySelector), curs)):
+                        sat = True
+                    if sat:
+                        suff_i += 1
+                    else:
+                        break
+
+                if any(map(lambda x: len(x) == suff_i, refs)):
+                    if not all(map(lambda x: len(x) == suff_i, refs)):
+                        suff_i += 1
+                    else:
+                        # exact match
+                        continue
+
+                # check that resulting prefixes are same/comparable and turn them to strings
+                names = []
+                for i, x in enumerate(refs):
+                    pref = x[:len(x) - suff_i]
+                    self.print(pref)
+                    if not all(map(lambda x: vars[i].no_inscopes(x, paths[i]), pref)):
+                        raise ValueError('member ref: inscopes in prefix')
+                        pass
+                    start = nodes[i].position
+                    token_i = self.file.find_token(start)
+                    if isinstance(pref[0], MethodInvocation):
+                        token_i = self.file.find_matching_paren(token_i + 1)
+                    for y in pref[1:]:
+                        if isinstance(y, str):
+                            token_i += 2
+                        if isinstance(y, ArraySelector):
+                            token_i = self.file.find_matching_paren(token_i + 2)
+                        if isinstance(y, MethodInvocation):
+                            token_i = self.file.find_matching_paren(token_i + 3)
+                    #print(token_i, self.file.tokens[token_i])
+                    names.append(self.get_segment(start, self.file.tokens[token_i].position))
+
+                # add replacement
+                names = tuple(names)
+                if names not in var_params:
+                    params.append(Parameter("extracted%s" % counter, "placeholder_type", names))
+                    counter += 1
+                    var_params[names] = params[-1]
+                p = var_params[names]
+                self.replace(nodes[0].position, len(names[0]), p.name)
 
             # assignment
             if type(nodes[0]) == Assignment:
                 expressionls = list(map(lambda x: x.expressionl, nodes))
                 new_paths = tuple([p + (x,) for p, x in zip(paths, nodes)])
-                process_vars(expressionls, new_paths)
 
                 names = tuple(map(lambda x: x.member if not x.qualifier else x.qualifier, expressionls))
                 res = [vars[i].get_type(names[i], paths[i]) for i in range(n)]
@@ -154,6 +195,7 @@ class Extractor:
         for return_ in returns:
             self.print(return_)
 
+        self.apply_replacements()
         starts = [[lines[i][0], 0] for i in range(n)]
         ends = [[lines[i][1], len(self.lines[lines[i][1] - 1])] for i in range(n)]
         if processing_method:

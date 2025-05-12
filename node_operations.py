@@ -32,9 +32,20 @@ def simultaneous_walk(nodes, paths=None):
         for xs in zip(*nodes):
             yield from simultaneous_walk(xs, paths)
     if is_node(nodes[0]):
-        yield paths, nodes
         new_paths = tuple([p + (x,) for p,x in zip(paths, nodes)])
         for attr in nodes[0].attrs:
             values = list(map(lambda x: x.__dict__[attr], nodes))
             if None not in values:
                 yield from simultaneous_walk(values, new_paths)
+        yield paths, nodes
+
+def separate_references(node):
+    a = []
+    if node.qualifier:
+        a = node.qualifier.split('.')
+    for selector in [node] + (node.selectors or []):
+        if isinstance(selector, MemberReference):
+            a.append(selector.member)
+        else:
+            a.append(selector)
+    return a
