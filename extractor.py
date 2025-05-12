@@ -111,7 +111,7 @@ class Extractor:
                         if len(set(curs)) == 1:
                             sat = True
                     if all(map(lambda x: isinstance(x, MethodInvocation), curs)):
-                        if len(set([x.member for x in curs])) == 1:
+                        if len(set([x.member for x in curs])) == 1 and len(set([len(x.arguments) for x in curs])) == 1:
                             sat = True
                     if all(map(lambda x: isinstance(x, ArraySelector), curs)):
                         sat = True
@@ -134,7 +134,6 @@ class Extractor:
                     self.print(pref)
                     if not all(map(lambda x: vars[i].no_inscopes(x, paths[i]), pref)):
                         raise ValueError('member ref: inscopes in prefix')
-                        pass
                     start = nodes[i].position
                     token_i = self.file.find_token(start)
                     if isinstance(pref[0], MethodInvocation):
@@ -230,10 +229,10 @@ class Extractor:
 
 
     def output_to_file(self, dst='output.java'):
-        self.print('\n--- Replacements (type 1)')
+        self.print('\n--- Replacements (type 1) ---')
         for repl1 in self.replacements:
             self.print(repl1)
-        self.print('\n--- Replacements (type 2)')
+        self.print('\n--- Replacements (type 2) ---')
         for repl2 in self.line_replacements:
             self.print(repl2)
 
@@ -250,7 +249,7 @@ class Extractor:
             new_s = ''
             for y in x.new_lines:
                 if type(y) == tuple:
-                    new_s += self.lines[y[0][0]-1][y[0][1]-1:] + ''.join(self.lines[y[0][0]:y[1][0]-1]) + self.lines[y[1][0]-1][:y[1][1]-1]
+                    new_s += self.get_segment(y[0], y[1])
                 else:
                     new_s += y
             replacements.append(LineReplacement(x.start, x.end, new_s))
