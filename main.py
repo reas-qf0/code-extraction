@@ -26,6 +26,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 with open('./results/clonepairs.txt') as file:
     reader = csv.reader(file)
     params = [((int(x1), int(x2)), (int(x3), int(x4))) for _, x1, x2, _, x3, x4 in reader]
+params.sort()
 groups = []
 for b1, b2 in params:
     for i in range(len(groups)):
@@ -35,7 +36,7 @@ for b1, b2 in params:
             break
     else:
         groups.append({b1, b2})
-print('--- CCStokener found %s clones, divided into %s groups ---' % (len(params), len(groups)))
+print('--- CCStokener found %s clones, divided into %s groups ---' % (sum([len(x) for x in groups]), len(groups)))
 
 extractor = Extractor(fname, silent=True)
 for i, group in enumerate(groups):
