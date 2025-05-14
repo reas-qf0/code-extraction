@@ -88,9 +88,14 @@ class SourceFile:
             if not counting:
                 if isinstance(node, ClassDeclaration): counting = True
                 continue
-            if isinstance(node, ForStatement) and isinstance(node.control.init, VariableDeclaration):
-                for decl in node.control.init.declarators:
-                    res[decl.name] = node.control.init.type
+            if isinstance(node, ForStatement):
+                if isinstance(node.control, EnhancedForControl):
+                    #print(node.control)
+                    for decl in node.control.var.declarators:
+                        res[decl.name] = node.control.var.type
+                elif isinstance(node.control.init, VariableDeclaration):
+                    for decl in node.control.init.declarators:
+                        res[decl.name] = node.control.init.type
             if isinstance(node, MethodDeclaration):
                 for param in node.parameters:
                     res[param.name] = param.type

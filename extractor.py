@@ -145,8 +145,9 @@ class Extractor:
                             token_i = self.file.find_matching_paren(token_i + 2)
                         if isinstance(y, MethodInvocation):
                             token_i = self.file.find_matching_paren(token_i + 3)
-                    #print(token_i, self.file.tokens[token_i])
-                    names.append(self.get_segment(start, self.file.tokens[token_i].position))
+                    end_token = self.file.tokens[token_i]
+                    end_pos = (end_token.position[0], end_token.position[1] + len(end_token.value) - 1)
+                    names.append(self.get_segment(start, end_pos))
 
                 # add replacement
                 names = tuple(names)
@@ -195,7 +196,7 @@ class Extractor:
             self.print(return_)
 
         self.apply_replacements()
-        starts = [[lines[i][0], 0] for i in range(n)]
+        starts = [[lines[i][0], 1] for i in range(n)]
         ends = [[lines[i][1], len(self.lines[lines[i][1] - 1])] for i in range(n)]
         if processing_method:
             for i in range(n):
