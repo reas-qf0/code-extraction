@@ -51,6 +51,7 @@ class Extractor:
         if isinstance(blocks[0], (MethodDeclaration, ConstructorDeclaration)):
             processing_method = True
             method_type = type_to_string(blocks[0].return_type)
+            method_static = any(map(lambda x: 'static' in x.modifiers, blocks))
             blocks = list(map(lambda x: x.body, blocks))
         else:
             processing_method = False
@@ -124,14 +125,23 @@ class Extractor:
                     if not all(map(lambda x: len(x) == suff_i, refs)):
                         suff_i += 1
                     else:
-                        # exact match
+                        # exact match, add only if outscope
+                        var_c, var_t = vars[0].get_type(refs[0][0], paths[0])
+                        if var_c == VarClass.OUTSCOPE:
+                            names = (refs[0][0],) * n
+                            if names not in var_params:
+                                params.append(Parameter("extracted%s" % counter, type_to_string(var_t), names))
+                                counter += 1
+                                var_params[names] = params[-1]
+                            p = var_params[names]
+                            self.replace(nodes[0].position, len(refs[0][0]), p.name)
                         continue
+
 
                 # check that resulting prefixes are same/comparable and turn them to strings
                 names = []
                 for i, x in enumerate(refs):
                     pref = x[:len(x) - suff_i]
-                    self.print(pref)
                     if not all(map(lambda x: vars[i].no_inscopes(x, paths[i]), pref)):
                         raise ValueError('member ref: inscopes in prefix')
                     start = nodes[i].position
@@ -152,7 +162,15 @@ class Extractor:
                 # add replacement
                 names = tuple(names)
                 if names not in var_params:
-                    params.append(Parameter("extracted%s" % counter, "placeholder_type", names))
+                    var_type = None
+                    for i in range(n):
+                        q = vars[i].get_type(names[i], paths[i])[1]
+                        if q is not None:
+                            var_type = type_to_string(q)
+                            break
+                    if var_type is None:
+                        var_type = input(f'Enter type for {names}: ')
+                    params.append(Parameter("extracted%s" % counter, var_type, names))
                     counter += 1
                     var_params[names] = params[-1]
                 p = var_params[names]
@@ -210,6 +228,7 @@ class Extractor:
         suitable_place = min(map(lambda x: self.file.get_method_start_line(x), blocks))
         self.replace_lines((suitable_place, 0), (suitable_place, 0), [
             "\tprivate ",
+            "static " if processing_method and method_static else "",
             method_type if processing_method else returns[0].type if len(returns) > 0 else 'void',
             " extracted_method%s(" % self.counter,
             ", ".join(map(lambda x: x.type + " " + x.name, params)),
@@ -221,6 +240,7 @@ class Extractor:
 
         for i in range(n):
             self.replace_lines(starts[i], ends[i], [
+                'return ' if processing_method and method_type != 'void' else '',
                 returns[0].assigns[i] + ' = ' if len(returns) > 0 else '',
                 "extracted_method%s(" % self.counter,
                 ", ".join(map(lambda x: x.values[i], params)),

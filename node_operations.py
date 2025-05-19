@@ -17,7 +17,11 @@ def literal_to_type(value):
     return 'int'
 def type_to_string(type):
     if type is None: return "void"
-    return type.name + "[]" * len(type.dimensions)
+    s = type.name
+    if isinstance(type, ReferenceType) and type.arguments:
+        s += '<' + ', '.join(map(lambda x: type_to_string(x.type), type.arguments)) + '>'
+    s += "[]" * len(type.dimensions)
+    return s
 
 def simultaneous_walk(nodes, paths=None):
     n = len(nodes)
