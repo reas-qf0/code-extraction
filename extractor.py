@@ -248,6 +248,8 @@ class Extractor:
             ])
         self.counter += 1
 
+        return params, returns
+
 
     def output_to_file(self, dst='output.java'):
         self.print('\n--- Replacements (type 1) ---')
@@ -285,14 +287,10 @@ class Extractor:
 if __name__ == "__main__":
     if len(argv) >= 6:
         src = argv[1]
-        line_start1 = int(argv[2])
-        line_end1 = int(argv[3])
-        line_start2 = int(argv[4])
-        line_end2 = int(argv[5])
+        ranges = list(map(lambda x: tuple(map(int, x.split('-'))), argv[2:]))
     else:
         src = input("source file: ")
-        line_start1, line_end1 = map(int, input("1st block (startline-endline): ").split('-'))
-        line_start2, line_end2 = map(int, input("2nd block (startline-endline): ").split('-'))
+        ranges = list(map(lambda x: tuple(map(int, x.split('-'))), input('enter blocks in the format of startline-endline startline-endline ...').split()))
     e = Extractor(src)
-    e.extract((line_start1, line_end1), (line_start2, line_end2))
+    e.extract(*ranges)
     e.output_to_file('output.java')
