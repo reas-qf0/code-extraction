@@ -12,10 +12,10 @@ def get_bounds(node):
         if value is None: continue
         if is_node(value):
             bounds = get_bounds(value)
-            left = min(left, bounds[0])
+            #left = min(left, bounds[0])
             right = max(right, bounds[1])
         if is_node_array(value):
-            left = min(left, get_bounds(value[0])[0])
+            #left = min(left, get_bounds(value[0])[0])
             right = max(right, get_bounds(value[-1])[1])
     return left, right
 
@@ -30,12 +30,14 @@ def narrow_down(node, line_start, line_end):
                 return narrow_down(value, line_start, line_end)
         if is_node_array(value):
             fitting_nodes = []
-            for node in value:
-                bounds2 = get_bounds(node)
+            for node2 in value:
+                bounds2 = get_bounds(node2)
                 if bounds2[0] <= line_end and bounds2[1] >= line_start:
-                    fitting_nodes.append(node)
+                    fitting_nodes.append(node2)
             if len(fitting_nodes) == 1:
                 return narrow_down(fitting_nodes[0], line_start, line_end)
+            if len(fitting_nodes) == len(value):
+                return node
             elif len(fitting_nodes) > 1:
                 return fitting_nodes
     return None

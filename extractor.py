@@ -41,8 +41,6 @@ class Extractor:
 
     def extract(self, *lines):
         self.replacements2 = []
-        if type(lines) == list:
-            lines = lines[0]
         if len(lines) < 2:
             raise ValueError("provide at least 2 pairs of lines")
 
@@ -55,6 +53,12 @@ class Extractor:
             blocks = list(map(lambda x: x.body, blocks))
         else:
             processing_method = False
+
+        self.print('Processing method: %s' % processing_method)
+        if processing_method:
+            self.print('\tReturn type: %s' % method_type)
+            self.print('\tIs method static: %s' % method_static)
+        self.print()
 
         fields = self.file.get_field_declarations(blocks[0])
         vars = list(map(lambda x: VariableManager(fields, self.file.get_outscope_declarations(x)), blocks))
@@ -169,7 +173,9 @@ class Extractor:
                             var_type = type_to_string(q)
                             break
                     if var_type is None:
-                        var_type = input(f'Enter type for {names}: ')
+                        var_type = input(f'Enter type for {'/'.join(names)} (or leave blank if types differ): ')
+                        if var_type == '':
+                            raise ValueError('Interpreted as different types')
                     params.append(Parameter("extracted%s" % counter, var_type, names))
                     counter += 1
                     var_params[names] = params[-1]
@@ -219,14 +225,14 @@ class Extractor:
         if processing_method:
             for i in range(n):
                 while '{' not in self.lines[starts[i][0] - 1]:
-                    starts[i][0] -= 1
+                    starts[i][0] += 1
                 starts[i][1] = self.lines[starts[i][0] - 1].index('{') + 2
                 while '}' not in self.lines[ends[i][0] - 1]:
-                    ends[i][0] += 1
+                    ends[i][0] -= 1
                 ends[i][1] = self.lines[ends[i][0] - 1].index('}')
 
-        suitable_place = min(map(lambda x: self.file.get_method_start_line(x), blocks))
-        self.replace_lines((suitable_place, 0), (suitable_place, 0), [
+        suitable_place = min(map(lambda x: self.file.get_method_start_line(x), blocks)) - 1
+        self.replace_lines((suitable_place, 1), (suitable_place, 1), [
             "\tprivate ",
             "static " if processing_method and method_static else "",
             method_type if processing_method else returns[0].type if len(returns) > 0 else 'void',
@@ -285,7 +291,7 @@ class Extractor:
 
 
 if __name__ == "__main__":
-    if len(argv) >= 6:
+    if len(argv) >= 4:
         src = argv[1]
         ranges = list(map(lambda x: tuple(map(int, x.split('-'))), argv[2:]))
     else:
