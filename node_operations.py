@@ -48,8 +48,5 @@ def separate_references(node):
     if node.qualifier:
         a = node.qualifier.split('.')
     for selector in [node] + (node.selectors or []):
-        if isinstance(selector, MemberReference):
-            a.append(selector.member)
-        else:
-            a.append(selector)
+        a.append(selector)
     return a

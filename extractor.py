@@ -1,6 +1,7 @@
+from javalang.tokenizer import Separator
 from javalang.tree import *
 from collections import namedtuple
-from node_operations import simultaneous_walk, type_to_string, literal_to_type, separate_references
+from node_operations import simultaneous_walk, type_to_string, literal_to_type, separate_references, types
 from source_file import SourceFile
 from variable_manager import VariableManager, VarClass
 from sys import argv
@@ -9,6 +10,41 @@ Replacement = namedtuple('Replacement', ['position', 'len', 'new_s'])
 LineReplacement = namedtuple('LineReplacement', ['start', 'end', 'new_lines'])
 Parameter = namedtuple('Parameter', ['name', 'type', 'values'])
 ReturnValue = namedtuple('ReturnValue', ['name', 'type', 'assigns'])
+
+class ExtractionResult:
+    CUSTOM_ERROR = -1
+    SUCCESS = 0
+    DIFF_PROPERTIES = 1
+    INVALID_INPUT = 2
+
+    @classmethod
+    def success(cls):
+        return ExtractionResult(ExtractionResult.SUCCESS, None)
+    @classmethod
+    def error(cls, info):
+        return ExtractionResult(ExtractionResult.CUSTOM_ERROR, info)
+    @classmethod
+    def different_properties(cls, info):
+        return ExtractionResult(ExtractionResult.DIFF_PROPERTIES, info)
+    @classmethod
+    def invalid_input(cls, info):
+        return ExtractionResult(ExtractionResult.INVALID_INPUT, info)
+
+    def __init__(self, code, info):
+        self.code = code
+        self.info = info
+    def __bool__(self):
+        return bool(self.code)
+    def description(self):
+        match self.code:
+            case 0:
+                return 'success'
+            case -1:
+                return 'failure: %s' % self.info
+            case 1:
+                return 'failure: critical differences in AST nodes/their properties (%s)' % self.info
+            case 2:
+                return 'failure: invalid input (%s)' % self.info
 
 class Extractor:
     def __init__(self, src, silent=False):
@@ -39,10 +75,10 @@ class Extractor:
         self.line_replacements.append(LineReplacement(tuple(start), tuple(end), new_lines))
 
 
-    def extract(self, *lines):
+    def extract_nonrecursively(self, *lines):
         self.replacements2 = []
         if len(lines) < 2:
-            raise ValueError("provide at least 2 pairs of lines")
+            return ExtractionResult.invalid_input("only one block provided")
 
         blocks = list(map(lambda x: self.file.narrow_down(x[0], x[1]), lines))
         n = len(blocks)
@@ -70,15 +106,15 @@ class Extractor:
         ret_params = {}
 
         for paths, nodes in simultaneous_walk(blocks):
-            for i in range(1, n):
-                if type(nodes[i]) != type(nodes[0]):
-                    raise ValueError('ast types differ: not going here - %s' % list(map(lambda x: type(x).__name__, nodes)))
+            node_types = list(map(lambda x: type(x).__name__, nodes))
+            if len(set(node_types)) > 1:
+                return ExtractionResult.different_properties(node_types)
 
             # if var declaration, add type
             if isinstance(nodes[0], VariableDeclaration):
                 decls = list(map(lambda x: x.declarators, nodes))
                 if len(set(map(len, decls))) > 1:
-                    raise ValueError('different amount of var declarators')
+                    return ExtractionResult.different_properties(list(map(len, decls)))
                 for decl in zip(*decls):
                     for i in range(n):
                         vars[i].add_inscope(decl[i].name, paths[i], nodes[i].type)
@@ -87,7 +123,7 @@ class Extractor:
             if isinstance(nodes[0], MethodDeclaration):
                 params = list(map(lambda x: x.parameters, nodes))
                 if len(set(map(len, params))) > 1:
-                    raise ValueError('different amount of method parameters')
+                    return ExtractionResult.different_properties(list(map(len, params)))
                 for param in zip(*params):
                     for i in range(n):
                         vars[i].add_inscope(param[i].name, paths[i], param[i].type)
@@ -104,8 +140,10 @@ class Extractor:
                 self.replace(nodes[0].position, len(nodes[0].value), p.name)
 
             # reference to a variable
-            if isinstance(nodes[0], (MemberReference, MethodInvocation)):
+            if isinstance(nodes[0], (MemberReference, MethodInvocation, This)):
+                if isinstance(paths[0][-1], (MemberReference, MethodInvocation, This)): continue
                 refs = [separate_references(x) for x in nodes]
+                self.print(refs)
 
                 # find "common" suffix
                 suff_i = 0
@@ -147,13 +185,16 @@ class Extractor:
                 for i, x in enumerate(refs):
                     pref = x[:len(x) - suff_i]
                     if not all(map(lambda x: vars[i].no_inscopes(x, paths[i]), pref)):
-                        raise ValueError('member ref: inscopes in prefix')
-                    start = nodes[i].position
-                    token_i = self.file.find_token(start)
+                        return ExtractionResult.error('member ref: inscopes in prefix')
+                    if not nodes[i].position:
+                        return ExtractionResult.error('smd javalang')
+                    token_i = self.file.find_token(nodes[i].position)
+                    if token_i is None: continue
+                    start = self.file.tokens[token_i].position
                     if isinstance(pref[0], MethodInvocation):
                         token_i = self.file.find_matching_paren(token_i + 1)
                     for y in pref[1:]:
-                        if isinstance(y, str):
+                        if isinstance(y, MemberReference):
                             token_i += 2
                         if isinstance(y, ArraySelector):
                             token_i = self.file.find_matching_paren(token_i + 2)
@@ -168,14 +209,20 @@ class Extractor:
                 if names not in var_params:
                     var_type = None
                     for i in range(n):
-                        q = vars[i].get_type(names[i], paths[i])[1]
+                        if names[i] == 'this':
+                            var_type = self.file.get_class_name(nodes[i])
+                            break
+                        if names[i].startswith('this.'):
+                            q = vars[i].fields.get(names[i][5:])
+                        else:
+                            q = vars[i].get_type(names[i], paths[i])[1]
                         if q is not None:
                             var_type = type_to_string(q)
                             break
                     if var_type is None:
                         var_type = input(f'Enter type for {'/'.join(names)} (or leave blank if types differ): ')
                         if var_type == '':
-                            raise ValueError('Interpreted as different types')
+                            return ExtractionResult.error('Interpreted as different types')
                     params.append(Parameter("extracted%s" % counter, var_type, names))
                     counter += 1
                     var_params[names] = params[-1]
@@ -186,6 +233,8 @@ class Extractor:
             if type(nodes[0]) == Assignment:
                 expressionls = list(map(lambda x: x.expressionl, nodes))
                 new_paths = tuple([p + (x,) for p, x in zip(paths, nodes)])
+                if all(map(lambda x: isinstance(x, This), expressionls)):
+                    continue
 
                 names = tuple(map(lambda x: x.member if not x.qualifier else x.qualifier, expressionls))
                 res = [vars[i].get_type(names[i], paths[i]) for i in range(n)]
@@ -194,8 +243,9 @@ class Extractor:
                 if VarClass.INSCOPE in cs:
                     # inscopes have to always be returned
                     if any(map(lambda x: x != VarClass.INSCOPE, cs)):
-                        raise ValueError("inscope matching with non-inscope")
-                    if len(set(ts)) > 1: raise ValueError("different inscope variables in the same place")
+                        return ExtractionResult.error("inscope matching with non-inscope")
+                    if len(set(ts)) > 1:
+                        return ExtractionResult.error("different inscope variables in the same place")
                     returns.append(ReturnValue(names[0], ts[0], [names[0] for _ in range(n)]))
                 elif type(ts[0]) == ReferenceType or len(ts[0].dimensions) > 0:
                     # no need to process by-reference vars
@@ -254,7 +304,24 @@ class Extractor:
             ])
         self.counter += 1
 
-        return params, returns
+        return ExtractionResult.success()
+
+
+    def extract(self, *lines):
+        result = self.extract_nonrecursively(*lines)
+        if result.code != 1:
+            return [[lines, result]]
+        if len(set(result.info)) == len(lines):
+            return [[lines, result]]
+        d = {}
+        for i in range(len(lines)):
+            d.setdefault(result.info[i], [])
+            d[result.info[i]].append(lines[i])
+
+        results = []
+        for group in d.values():
+            results.extend(self.extract(*group))
+        return results
 
 
     def output_to_file(self, dst='output.java'):

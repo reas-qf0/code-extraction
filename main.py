@@ -38,17 +38,19 @@ for b1, b2 in params:
         groups.append({b1, b2})
 print('--- CCStokener found %s clones, divided into %s groups ---' % (sum([len(x) for x in groups]), len(groups)))
 
+def group_to_string(group):
+    return ' '.join(map(lambda x: '(%s-%s)' % x, group))
+
 extractor = Extractor(fname, silent=True)
 for i, group in enumerate(groups):
-    print('Extracting group %s: ' % (i + 1),
-          ' '.join(map(lambda x: '(%s-%s)' % x, group)),
-          '...',end='')
-    try:
-        extractor.extract(*group)
-        print('success')
-    except Exception as e:
-        print('failure')
-        print('\tmessage:', e)
+    print('Extracting group %s: ' % (i + 1), group_to_string(group), '...',end='')
+    result = extractor.extract(*group)
+    if len(result) == 1:
+        print(result[0][1].description())
+    else:
+        print('further subdivided into %s subgroups:' % len(result))
+        for subgroup, subgroup_result in result:
+            print(f'\t{group_to_string(subgroup)} - {subgroup_result.description()}')
 
 output_file = os.path.join(extractor_path, 'output.java')
 print('--- Saving result to: %s ---' % output_file)

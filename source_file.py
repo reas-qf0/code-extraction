@@ -70,6 +70,12 @@ class SourceFile:
             if self.tokens[i].value == parens[paren]: count -= 1
             if count == 0: return i
 
+    def get_class_name(self, node):
+        for node2 in self.get_path(node)[::-1]:
+            if isinstance(node2, ClassDeclaration):
+                return node2.name
+        return None
+
     def get_field_declarations(self, node):
         path = self.get_path(node)
         res = {}
