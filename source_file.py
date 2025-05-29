@@ -1,4 +1,4 @@
-from node_operations import is_node, is_list, is_node_array
+from node_operations import is_node, is_list, is_node_array, types
 import javalang
 from javalang.tree import *
 from javalang.ast import walk_tree
@@ -74,6 +74,15 @@ class SourceFile:
         for node2 in self.get_path(node)[::-1]:
             if isinstance(node2, ClassDeclaration):
                 return node2.name
+        return None
+
+    def find_return_type(self, node, name, argument_types):
+        for node2 in self.get_path(node)[::-1]:
+            if isinstance(node2, ClassDeclaration):
+                for node3 in node2.body:
+                    if isinstance(node3, MethodDeclaration):
+                        if node3.name == name and list(map(lambda x: x.type, node3.parameters)) == argument_types:
+                            return node3.return_type
         return None
 
     def get_field_declarations(self, node):

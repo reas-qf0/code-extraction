@@ -75,6 +75,29 @@ class Extractor:
         self.line_replacements.append(LineReplacement(tuple(start), tuple(end), new_lines))
 
 
+    def detect_type(self, expression, var_manager, scope):
+        if not isinstance(expression, list):
+            return self.detect_type([expression], var_manager, scope)
+        #print('detect_type', expression, types(scope))
+        if len(expression) == 1:
+            if isinstance(expression[0], MemberReference):
+                t = var_manager.get_type(expression[0].member, scope)[1]
+                if t is None: return '{undetermined_type}'
+                return type_to_string(t)
+            elif isinstance(expression[0], This):
+                return self.file.get_class_name(expression[0])
+            elif isinstance(expression[0], MethodInvocation):
+                argument_types = [self.detect_type(x, var_manager, scope) for x in expression[0].arguments]
+                t = self.file.find_return_type(expression[0], expression[0].member, argument_types)
+                if t is None: return '{undetermined_type}'
+                return type_to_string(t)
+        elif len(expression) == 2:
+            if isinstance(expression[0], This) and isinstance(expression[1], MemberReference):
+                t = var_manager.fields.get(expression[1].member)
+                if t is None: return '{undetermined_type}'
+                return type_to_string(t)
+        return '{undetermined_type}'
+
     def extract_nonrecursively(self, *lines):
         self.replacements2 = []
         if len(lines) < 2:
@@ -182,10 +205,17 @@ class Extractor:
 
                 # check that resulting prefixes are same/comparable and turn them to strings
                 names = []
+                var_types = []
                 for i, x in enumerate(refs):
                     pref = x[:len(x) - suff_i]
+                    # check that resulting prefixes are acceptable
                     if not all(map(lambda x: vars[i].no_inscopes(x, paths[i]), pref)):
                         return ExtractionResult.error('member ref: inscopes in prefix')
+
+                    # defer the resulting parameter's type
+                    var_types.append(self.detect_type(pref, vars[i], paths[i]))
+
+                    # turn parameter to string
                     if not nodes[i].position:
                         return ExtractionResult.error('smd javalang')
                     token_i = self.file.find_token(nodes[i].position)
@@ -203,27 +233,20 @@ class Extractor:
                     end_token = self.file.tokens[token_i]
                     end_pos = (end_token.position[0], end_token.position[1] + len(end_token.value) - 1)
                     names.append(self.get_segment(start, end_pos))
+                self.print(var_types)
+
+                if len(set(var_types)) > 1:
+                    return ExtractionResult.different_properties(var_types)
+                if var_types[0] == '{undetermined_type}':
+                    var_type = input(f'Enter type for {'/'.join(names)} (leave blank if types are different): ')
+                    if var_type == '':
+                        return ExtractionResult.error('undetermined types reported as different')
+                    var_types = [var_type]
 
                 # add replacement
                 names = tuple(names)
                 if names not in var_params:
-                    var_type = None
-                    for i in range(n):
-                        if names[i] == 'this':
-                            var_type = self.file.get_class_name(nodes[i])
-                            break
-                        if names[i].startswith('this.'):
-                            q = vars[i].fields.get(names[i][5:])
-                        else:
-                            q = vars[i].get_type(names[i], paths[i])[1]
-                        if q is not None:
-                            var_type = type_to_string(q)
-                            break
-                    if var_type is None:
-                        var_type = input(f'Enter type for {'/'.join(names)} (or leave blank if types differ): ')
-                        if var_type == '':
-                            return ExtractionResult.error('Interpreted as different types')
-                    params.append(Parameter("extracted%s" % counter, var_type, names))
+                    params.append(Parameter("extracted%s" % counter, var_types[0], names))
                     counter += 1
                     var_params[names] = params[-1]
                 p = var_params[names]
