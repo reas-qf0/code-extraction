@@ -176,7 +176,6 @@ class Extractor:
             if isinstance(nodes[0], (MemberReference, MethodInvocation, This)):
                 if isinstance(paths[0][-1], (MemberReference, MethodInvocation, This)): continue
                 refs = [separate_references(x) for x in nodes]
-                self.print(refs)
 
                 # find "common" suffix
                 suff_i = 0
@@ -204,10 +203,8 @@ class Extractor:
                         suff_i += 1
                     else:
                         # exact match, add only if outscope
-                        self.print('!!!', refs)
                         name = refs[0][0].member if isinstance(refs[0][0], MemberReference) else refs[0][0]
                         var_c, var_t = vars[0].get_type(name, paths[0])
-                        self.print('!!!', var_c, var_t)
                         if var_c == VarClass.OUTSCOPE:
                             names = (name,) * n
                             if names not in var_params:
@@ -249,7 +246,6 @@ class Extractor:
                     end_token = self.file.tokens[token_i]
                     end_pos = (end_token.position[0], end_token.position[1] + len(end_token.value) - 1)
                     names.append(self.get_segment(start, end_pos))
-                self.print(var_types)
 
                 if len(set(var_types)) > 1:
                     return ExtractionResult.different_properties(var_types)
@@ -278,7 +274,6 @@ class Extractor:
                 names = tuple(map(lambda x: x.member if not x.qualifier else x.qualifier, expressionls))
                 res = [vars[i].get_type(names[i], paths[i]) for i in range(n)]
                 cs, ts = map(list, zip(*res))
-                self.print(names, cs, ts)
                 if VarClass.INSCOPE in cs:
                     # inscopes have to always be returned
                     if any(map(lambda x: x != VarClass.INSCOPE, cs)):
