@@ -151,6 +151,12 @@ class Extractor:
                     for i in range(n):
                         vars[i].add_inscope(param[i].name, paths[i], param[i].type)
 
+            # if for control, add type
+            if isinstance(nodes[0], EnhancedForControl):
+                for i in range(n):
+                    for decl in nodes[i].var.declarators:
+                        vars[i].add_inscope(decl.name, paths[i], nodes[i].var.type)
+
             # hardcoded constant difference
             if type(nodes[0]) == Literal:
                 key = tuple(map(lambda x: x.value, nodes))
