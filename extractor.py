@@ -80,7 +80,11 @@ class Extractor:
             return self.detect_type([expression], var_manager, scope)
         #print('detect_type', expression, types(scope))
         if len(expression) == 1:
-            if isinstance(expression[0], MemberReference):
+            if isinstance(expression[0], str):
+                t = var_manager.get_type(expression[0], scope)[1]
+                if t is None: return '{undetermined_type}'
+                return type_to_string(t)
+            elif isinstance(expression[0], MemberReference):
                 t = var_manager.get_type(expression[0].member, scope)[1]
                 if t is None: return '{undetermined_type}'
                 return type_to_string(t)
@@ -182,6 +186,9 @@ class Extractor:
                     if all(map(lambda x: isinstance(x, str), curs)):
                         if len(set(curs)) == 1:
                             sat = True
+                    if all(map(lambda x: isinstance(x, MemberReference), curs)):
+                        if len(set([x.member for x in curs])) == 1:
+                            sat = True
                     if all(map(lambda x: isinstance(x, MethodInvocation), curs)):
                         if len(set([x.member for x in curs])) == 1 and len(set([len(x.arguments) for x in curs])) == 1:
                             sat = True
@@ -197,15 +204,18 @@ class Extractor:
                         suff_i += 1
                     else:
                         # exact match, add only if outscope
-                        var_c, var_t = vars[0].get_type(refs[0][0], paths[0])
+                        self.print('!!!', refs)
+                        name = refs[0][0].member if isinstance(refs[0][0], MemberReference) else refs[0][0]
+                        var_c, var_t = vars[0].get_type(name, paths[0])
+                        self.print('!!!', var_c, var_t)
                         if var_c == VarClass.OUTSCOPE:
-                            names = (refs[0][0],) * n
+                            names = (name,) * n
                             if names not in var_params:
                                 params.append(Parameter("extracted%s" % counter, type_to_string(var_t), names))
                                 counter += 1
                                 var_params[names] = params[-1]
                             p = var_params[names]
-                            self.replace(nodes[0].position, len(refs[0][0]), p.name)
+                            self.replace(nodes[0].position, len(name), p.name)
                         continue
 
 
@@ -394,5 +404,11 @@ if __name__ == "__main__":
         src = input("source file: ")
         ranges = list(map(lambda x: tuple(map(int, x.split('-'))), input('enter blocks in the format of startline-endline startline-endline ...').split()))
     e = Extractor(src)
-    e.extract(*ranges)
-    e.output_to_file('output.java')
+    for result in e.extract(*ranges):
+        if result[1].code != ExtractionResult.SUCCESS:
+            print(result[0], ': failure during extraction')
+            print('code:', result[1].code)
+            print('message:', result[1].info)
+            break
+    else:
+        e.output_to_file('output.java')
