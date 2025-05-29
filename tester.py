@@ -1,7 +1,7 @@
 import os
 from sys import argv
 
-from extractor import Extractor
+from extractor import Extractor, ExtractionResult
 
 if len(argv) < 3:
     print('usage: tester.py (test name) [auto|(range1) (range2) [(range3) ...]] (type) [type_params]')
@@ -10,6 +10,7 @@ name = argv[1]
 if argv[2] == 'auto':
     if not os.system('python3 main.py tests/%s.java' % name):
         print(f'Error in test {name}: detection/extraction failed')
+        exit(1)
     i = 3
 else:
     ranges = []
@@ -18,7 +19,9 @@ else:
         ranges.append(tuple(map(int, argv[i].split('-'))))
         i += 1
     extractor = Extractor('tests/%s.java' % name)
-    extractor.extract(*ranges)
+    if not all(map(lambda x: x[1].code == ExtractionResult.SUCCESS, extractor.extract(*ranges))):
+        print(f'Error in test {name}: detection/extraction failed')
+        exit(1)
     extractor.output_to_file('output.java')
 
 test_type = argv[i]
